@@ -46,6 +46,20 @@ shootings <- bind_rows(shootings_hist, shootings_ytd) %>%
 shots_fired <- read_csv(here("data","shots_fired_enriched.csv")) %>%
   clean_names()
 
+shots_fired_sf <- shots_fired |>
+  # 1. Keep the original geometry string but under a different name
+  rename(geom_raw = geometry) |>
+  
+  # 2. Clean and split "c(x, y)" into numeric columns
+  mutate(
+    geom_raw = str_remove_all(geom_raw, "c\\(|\\)"),               # remove "c(" and ")"
+    x = as.numeric(str_trim(str_split_fixed(geom_raw, ",", 2)[,1])),
+    y = as.numeric(str_trim(str_split_fixed(geom_raw, ",", 2)[,2]))
+  ) |>
+  
+  # 3. Convert to sf using x/y as coordinates (NYC State Plane 2263)
+  st_as_sf(coords = c("x", "y"), crs = 2263, remove = TRUE)
+
 # --- 4) Quick sanity checks ---------------------------------------------------
 
 # Path to the geodatabase

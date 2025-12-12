@@ -23,13 +23,14 @@ lion_streets <- lion |>
     segment_typ == "U",
     traf_dir %in% c("T", "A", "W"),
     !rw_type %in% c("2", "3", "4", "9")
-  )
+  ) 
 
 # Get intersection nodes (nodes where 2+ streets meet)
 # Load nodes
 nodes <- st_read(lion_gdb, layer = "node") |>
   st_transform(2263) |>
-  clean_names()
+  clean_names() %>%
+  mutate(nodeid = as.integer(nodeid))
 
 node_stname <- st_read(lion_gdb, layer = "node_stname") |>
   clean_names()
@@ -41,7 +42,8 @@ node_street_counts <- lion_streets |>
   pivot_longer(cols = c(node_id_from, node_id_to), values_to = "nodeid") |>
   filter(!is.na(nodeid)) |>
   distinct(nodeid, street) |>
-  count(nodeid, name = "n_streets")
+  count(nodeid, name = "n_streets")%>%
+  mutate(nodeid = as.integer(nodeid))
 
 # Intersections = nodes with 2+ street names
 intersection_nodes <- nodes |>
@@ -53,6 +55,8 @@ cat("Total intersection nodes:", nrow(intersection_nodes), "\n")
 intersection_buffers <- intersection_nodes |>
   st_buffer(dist = 25) |>  # 25 feet
   select(nodeid, n_streets)
+
+
 
 #-------------------------------------------------
 # PART 2: Build segment → physical_id lookup
@@ -81,6 +85,7 @@ intersection_to_physical <- lion_streets |>
     values_to = "nodeid"
   ) |>
   filter(!is.na(nodeid)) |>
+  mutate(nodeid = as.integer(nodeid)) |>
   inner_join(
     intersection_nodes |> st_drop_geometry() |> select(nodeid),
     by = "nodeid"
@@ -141,8 +146,8 @@ get_analysis_window <- function(df, date_col) {
 
 # --- Complaints ---
 complaints_dates <- complaints |>
-  mutate(cmplnt_fr_dt = mdy(cmplnt_fr_dt)) |>
-  pull(cmplnt_fr_dt)
+  mutate(rpt_dt = mdy(rpt_dt)) |>
+  pull(rpt_dt)
 
 complaints_window <- list(
   start = max(complaints_dates, na.rm = TRUE) - years(5),
@@ -204,14 +209,7 @@ shootings_sf <- shootings |>
 cat("Shootings in window:", nrow(shootings_sf), "\n")
 
 # --- Shots Fired ---
-# Your shots_fired already has geometry - need to handle differently
-shots_fired_sf <- shots_fired |>
-  filter(!is.na(geometry)) |>
-  mutate(
-    geometry = st_as_sfc(geometry, crs = 4326)
-  ) |>
-  st_as_sf() |>
-  st_transform(2263)
+
 
 # Get date window
 shots_window <- list(
@@ -551,16 +549,15 @@ write_csv(complaints_comparison, here("output", "complaints_ranking_comparison.c
 write_csv(shootings_comparison, here("output", "shootings_ranking_comparison.csv"))
 write_csv(shots_comparison, here("output", "shots_fired_ranking_comparison.csv"))
 
-# Summary table
+
+# Summary table - fix by adding dataset before binding
 all_summaries <- bind_rows(
-  complaints_summary,
-  shootings_summary,
-  shots_summary
-) |>
-  mutate(dataset = rep(c("complaints", "shootings", "shots_fired"), each = 4))
+  complaints_summary |> mutate(dataset = "complaints"),
+  shootings_summary |> mutate(dataset = "shootings"),
+  shots_summary |> mutate(dataset = "shots_fired")
+)
 
 write_csv(all_summaries, here("output", "intersection_method_summaries.csv"))
-
 cat("\n\nResults exported to output/ folder\n")
 
 #-------------------------------------------------
@@ -610,9 +607,13 @@ plot_rank_stability <- function(results_list, dataset_name, top_n = 100) {
   return(p)
 }
 
+
 p_complaints <- plot_rank_stability(complaints_results, "Complaints")
+p_complaints
 p_shootings <- plot_rank_stability(shootings_results, "Shootings")
+p_shootings
 p_shots <- plot_rank_stability(shots_results, "Shots Fired")
+p_shots
 
 ggsave(here("output", "rank_stability_complaints.png"), p_complaints, width = 8, height = 10)
 ggsave(here("output", "rank_stability_shootings.png"), p_shootings, width = 8, height = 10)
