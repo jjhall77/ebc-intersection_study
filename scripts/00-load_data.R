@@ -47,8 +47,25 @@ shots_fired <- read_csv(here("data","shots_fired_enriched.csv")) %>%
   clean_names()
 
 # --- 4) Quick sanity checks ---------------------------------------------------
-list(
-  complaints_rows = nrow(complaints),
-  shootings_rows  = nrow(shootings),
-  sf_rows         = nrow(shots_fired)
-)
+
+# Path to the geodatabase
+lion_gdb <- here("data", "lion", "lion.gdb")
+
+# List available layers inside the .gdb
+st_layers(lion_gdb)
+
+lion_gdb <- here("data", "lion", "lion.gdb")
+
+lion <- st_read(lion_gdb, layer = "lion") %>%
+  st_transform(2263) %>% 
+  clean_names() # NYC coordinates, ft
+
+
+# read + clean + transform to EPSG:2263
+physical_blocks <- st_read(here("data", "physical_blocks.gpkg"), quiet = TRUE) %>%
+  clean_names() %>%
+  st_transform(2263)
+
+# quick check
+st_crs(physical_blocks)
+
